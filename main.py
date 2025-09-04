@@ -45,40 +45,62 @@ def clean_json_string(json_str: str) -> str:
 # Function to get Google credentials from environment or file
 def get_google_credentials_info():
     """Get Google OAuth credentials from environment variable or file"""
+    print("=== Starting get_google_credentials_info ===")
+    
     try:
         # Try environment variable first (for production)
         env_creds = os.getenv('GOOGLE_CREDENTIALS_JSON')
+        print(f"Environment variable exists: {env_creds is not None}")
+        
         if env_creds:
-            print("Loading credentials from environment variable")
+            print(f"Environment variable length: {len(env_creds)}")
+            print(f"First 50 characters: {env_creds[:50]}")
+            
             # Clean the JSON string before parsing
             cleaned_creds = clean_json_string(env_creds)
+            print(f"After cleaning length: {len(cleaned_creds)}")
+            
             try:
-                return json.loads(cleaned_creds)
+                result = json.loads(cleaned_creds)
+                print("JSON parsing successful")
+                print(f"Keys in credentials: {list(result.keys())}")
+                return result
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}")
-                print(f"Cleaned credentials length: {len(cleaned_creds)}")
-                print(f"First 200 chars: {cleaned_creds[:200]}")
-                raise HTTPException(status_code=500, detail=f"환경변수의 JSON 형식이 올바르지 않습니다: {str(e)}")
+                print(f"Error at position: {e.pos}")
+                # Show characters around the error position
+                if hasattr(e, 'pos') and e.pos:
+                    start = max(0, e.pos - 20)
+                    end = min(len(cleaned_creds), e.pos + 20)
+                    print(f"Context around error: '{cleaned_creds[start:end]}'")
+                raise Exception(f"환경변수 JSON 파싱 실패: {str(e)}")
         
         # Fallback to file (for development)
+        print("Checking for credentials.json file...")
         if os.path.exists("credentials.json"):
-            print("Loading credentials from file")
+            print("File exists, reading...")
             with open("credentials.json", 'r', encoding='utf-8') as f:
                 content = f.read()
+                print(f"File content length: {len(content)}")
                 cleaned_content = clean_json_string(content)
                 try:
-                    return json.loads(cleaned_content)
+                    result = json.loads(cleaned_content)
+                    print("File JSON parsing successful")
+                    return result
                 except json.JSONDecodeError as e:
                     print(f"File JSON decode error: {e}")
-                    raise HTTPException(status_code=500, detail=f"credentials.json 파일의 JSON 형식이 올바르지 않습니다: {str(e)}")
+                    raise Exception(f"파일 JSON 파싱 실패: {str(e)}")
+        else:
+            print("credentials.json file not found")
         
-        raise HTTPException(status_code=500, detail="OAuth 설정이 없습니다. GOOGLE_CREDENTIALS_JSON 환경변수를 설정하거나 credentials.json 파일을 추가하세요.")
+        raise Exception("OAuth 설정이 없습니다. GOOGLE_CREDENTIALS_JSON 환경변수를 설정하거나 credentials.json 파일을 추가하세요.")
     
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Unexpected error getting credentials: {e}")
-        raise HTTPException(status_code=500, detail=f"인증 정보 로딩 중 오류 발생: {str(e)}")
+        print(f"Exception in get_google_credentials_info: {e}")
+        print(f"Exception type: {type(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        raise e  # Re-raise the original exception
     
 def get_redirect_uri(request: Request):
     """Get the appropriate redirect URI based on the request"""
