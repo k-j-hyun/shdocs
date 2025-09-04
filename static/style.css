@@ -355,11 +355,21 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: flex;
+    align-items: center;
 }
 
 .event:hover {
     transform: scale(1.02);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.hospital-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    margin-right: 3px;
+    font-weight: bold;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Modal */
@@ -455,6 +465,109 @@ body {
     margin-bottom: 5px;
 }
 
+/* Monthly Information Section */
+.monthly-info {
+    margin-top: 30px;
+    padding-top: 25px;
+    border-top: 2px solid #FFE4E9;
+}
+
+.monthly-info h3 {
+    color: #FF6B9D;
+    font-size: 1.4em;
+    margin-bottom: 20px;
+    font-weight: 500;
+    text-align: center;
+}
+
+.monthly-markdown-content {
+    background: #F8F9FA;
+    border-radius: 12px;
+    padding: 20px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.monthly-markdown-content h1 {
+    color: #FF6B9D;
+    font-size: 1.6em;
+    margin-bottom: 20px;
+    text-align: center;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #FFE4E9;
+}
+
+.monthly-markdown-content h2 {
+    color: #333;
+    font-size: 1.3em;
+    margin: 25px 0 15px 0;
+    padding: 8px 12px;
+    background: #FF6B9D;
+    color: white;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.monthly-markdown-content h2:before {
+    content: '🏥';
+    font-size: 1.1em;
+}
+
+.monthly-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.monthly-table thead {
+    background: linear-gradient(135deg, #FF6B9D, #FFB6C1);
+    color: white;
+}
+
+.monthly-table th,
+.monthly-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #FFE4E9;
+}
+
+.monthly-table th {
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.monthly-table td {
+    font-size: 13px;
+    color: #555;
+}
+
+.monthly-table tbody tr:hover {
+    background: #FFF5F7;
+}
+
+.monthly-table tbody tr:nth-child(even) {
+    background: #FAFBFC;
+}
+
+.monthly-table tbody tr:nth-child(even):hover {
+    background: #FFF0F3;
+}
+
+.monthly-markdown-content p {
+    color: #666;
+    text-align: center;
+    font-style: italic;
+    margin: 20px 0;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .container {
@@ -501,6 +614,31 @@ body {
         padding: 10px 3px;
         font-size: 12px;
     }
+    
+    /* Monthly info mobile styles */
+    .monthly-info {
+        margin-top: 20px;
+        padding-top: 15px;
+    }
+    
+    .monthly-markdown-content {
+        padding: 15px;
+        max-height: 400px;
+    }
+    
+    .monthly-table {
+        font-size: 12px;
+    }
+    
+    .monthly-table th,
+    .monthly-table td {
+        padding: 8px 10px;
+    }
+    
+    .monthly-markdown-content h2 {
+        font-size: 1.1em;
+        padding: 6px 10px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -525,6 +663,31 @@ body {
     .weekday {
         padding: 8px 2px;
         font-size: 11px;
+    }
+    
+    /* Monthly info extra small mobile styles */
+    .monthly-table {
+        font-size: 11px;
+    }
+    
+    .monthly-table th,
+    .monthly-table td {
+        padding: 6px 8px;
+    }
+    
+    .monthly-markdown-content {
+        padding: 10px;
+        max-height: 300px;
+    }
+    
+    .monthly-markdown-content h1 {
+        font-size: 1.3em;
+    }
+    
+    .monthly-markdown-content h2 {
+        font-size: 1em;
+        padding: 5px 8px;
+        margin: 15px 0 10px 0;
     }
 }
 

@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSheets();
     generateCalendar();
     loadEvents();
+    loadMonthlyInfo(); // 초기 월별 정보 로드
 });
 
 // Authentication functions
@@ -196,6 +197,7 @@ async function loadEvents() {
         
         events = await response.json();
         generateCalendar();
+        loadMonthlyInfo(); // 이벤트 로드 후 월별 정보도 로드
     } catch (error) {
         console.error('Error loading events:', error);
     } finally {
@@ -296,7 +298,13 @@ function generateCalendar() {
                 const eventElement = document.createElement('div');
                 eventElement.className = 'event';
                 eventElement.style.backgroundColor = event.color;
-                eventElement.textContent = `${event.time} ${event.name}`;
+                
+                // 병원별 색상 도트 추가
+                const hospitalColor = getHospitalColor(event.hospital);
+                eventElement.innerHTML = `
+                    <span class="hospital-dot" style="color: ${hospitalColor}; font-size: 8px; margin-right: 2px;">●</span>
+                    ${event.time} ${event.name}
+                `;
                 
                 // Create tooltip content
                 let tooltipContent = `
@@ -305,7 +313,7 @@ function generateCalendar() {
                 `;
                 
                 if (event.hospital && event.hospital.trim()) {
-                    tooltipContent += `<strong>병원:</strong> ${event.hospital}<br>`;
+                    tooltipContent += `<strong>병원:</strong> <span style="color: ${hospitalColor}">●</span> ${event.hospital}<br>`;
                 }
                 
                 if (event.phone && event.phone.trim()) {
@@ -343,6 +351,106 @@ function generateCalendar() {
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     generateCalendar();
+    loadMonthlyInfo(); // 월별 정보 로드
+}
+
+// 월별 마크다운 정보 로드
+async function loadMonthlyInfo() {
+    if (!currentDate) return;
+    
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    
+    try {
+        const response = await fetch(`/api/events/monthly/${year}/${month}`);
+        const data = await response.json();
+        
+        const monthlyMarkdown = document.getElementById('monthly-markdown');
+        const monthlyInfoTitle = document.getElementById('monthly-info-title');
+        
+        if (data.markdown) {
+            // 마크다운을 HTML로 변환
+            monthlyMarkdown.innerHTML = markdownToHtml(data.markdown);
+            monthlyInfoTitle.textContent = `${year}년 ${month}월 예약 현황`;
+        } else {
+            monthlyMarkdown.innerHTML = '<p>예약 정보가 없습니다.</p>';
+            monthlyInfoTitle.textContent = '월별 예약 현황';
+        }
+    } catch (error) {
+        console.error('Error loading monthly info:', error);
+        document.getElementById('monthly-markdown').innerHTML = '<p>월별 정보를 불러오는 중 오류가 발생했습니다.</p>';
+    }
+}
+
+// 간단한 마크다운 to HTML 변환 함수
+function markdownToHtml(markdown) {
+    let html = markdown;
+    
+    // 헤더 변환
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    
+    // 테이블 변환 (간단한 방식)
+    const lines = html.split('\n');
+    let inTable = false;
+    let processedLines = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        if (line.startsWith('|') && line.endsWith('|')) {
+            if (!inTable) {
+                processedLines.push('<table class="monthly-table">');
+                inTable = true;
+            }
+            
+            // 헤더 라인 건너뛰기 (|------|)
+            if (line.includes('---')) {
+                continue;
+            }
+            
+            const cells = line.split('|').slice(1, -1); // 첫 번째와 마지막 빈 엘리먼트 제거
+            const isHeader = i === 0 || processedLines[processedLines.length - 1] === '<table class="monthly-table">';
+            
+            if (isHeader) {
+                processedLines.push('<thead><tr>');
+                cells.forEach(cell => {
+                    processedLines.push(`<th>${cell.trim()}</th>`);
+                });
+                processedLines.push('</tr></thead><tbody>');
+            } else {
+                processedLines.push('<tr>');
+                cells.forEach(cell => {
+                    processedLines.push(`<td>${cell.trim()}</td>`);
+                });
+                processedLines.push('</tr>');
+            }
+        } else {
+            if (inTable) {
+                processedLines.push('</tbody></table>');
+                inTable = false;
+            }
+            processedLines.push(line);
+        }
+    }
+    
+    if (inTable) {
+        processedLines.push('</tbody></table>');
+    }
+    
+    html = processedLines.join('\n');
+    
+    // 단락 변환
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = '<p>' + html + '</p>';
+    html = html.replace(/<p><\/p>/g, '');
+    html = html.replace(/<p>(<h[1-6]>)/g, '$1');
+    html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<table)/g, '$1');
+    html = html.replace(/(<\/table>)<\/p>/g, '$1');
+    
+    return html;
 }
 
 // Event details modal
@@ -409,6 +517,47 @@ function showLoading(show) {
         loading.classList.remove('show');
         calendar.style.display = 'block';
     }
+}
+
+// 병원별 색상 반환 함수
+function getHospitalColor(hospitalName) {
+    if (!hospitalName) return '#999999';
+    
+    const hospitalColors = {
+        '라비앙성형외과': '#FF4757',
+        '트랜드성형외과': '#2ED573',
+        '황금피부과': '#FFA502',
+        '셀나인청담': '#3742FA',
+        '스텔라': '#FF6B9D',
+        '뉴브의원': '#5F27CD',
+        '엘투투': '#FF3838',
+        '케이블린필러': '#FFDD59',
+        '쥬브겔필러': '#C44569'
+    };
+    
+    // 병원명에서 키워드 찾기
+    for (const [keyword, color] of Object.entries(hospitalColors)) {
+        if (hospitalName.includes(keyword.replace('성형외과', '')) || 
+            hospitalName.includes(keyword.replace('피부과', '')) ||
+            hospitalName.includes(keyword.replace('청담', '')) ||
+            hospitalName.includes(keyword)) {
+            return color;
+        }
+    }
+    
+    // 특별 키워드들
+    if (hospitalName.includes('라비앙')) return '#FF4757';
+    if (hospitalName.includes('트랜드')) return '#2ED573';
+    if (hospitalName.includes('황금')) return '#FFA502';
+    if (hospitalName.includes('셀나인') || hospitalName.includes('제네오엑스')) return '#3742FA';
+    if (hospitalName.includes('스텔라')) return '#FF6B9D';
+    if (hospitalName.includes('뉴브')) return '#5F27CD';
+    if (hospitalName.includes('엘투투') || hospitalName.includes('M2M')) return '#FF3838';
+    if (hospitalName.includes('케이블린')) return '#FFDD59';
+    if (hospitalName.includes('쥬브겔')) return '#C44569';
+    
+    // 기본 색상
+    return '#999999';
 }
 
 // Utility functions

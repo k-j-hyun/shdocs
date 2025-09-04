@@ -10,10 +10,11 @@ import uvicorn
 import gspread
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
 import os
 import json
-from database import init_database, add_sheet as db_add_sheet, get_all_sheets as db_get_sheets, delete_sheet as db_delete_sheet, clear_events_for_sheet, add_event as db_add_event, get_all_events as db_get_events
+from database import (init_database, add_sheet as db_add_sheet, get_all_sheets as db_get_sheets, 
+                      delete_sheet as db_delete_sheet, clear_events_for_sheet, add_event as db_add_event, 
+                      get_all_events as db_get_events)
 
 app = FastAPI()
 
@@ -33,75 +34,30 @@ init_database()
 # Global variable to store credentials
 user_credentials = None
 
-# Function to get Google credentials from environment or file
-# Function to clean JSON string from control characters
 def clean_json_string(json_str: str) -> str:
     """Remove control characters from JSON string"""
-    import re
-    # Remove control characters except newline, carriage return, and tab
     cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', json_str)
     return cleaned
 
-# Function to get Google credentials from environment or file
 def get_google_credentials_info():
     """Get Google OAuth credentials from environment variable or file"""
-    print("=== Starting get_google_credentials_info ===")
-    
     try:
-        # Try environment variable first (for production)
         env_creds = os.getenv('GOOGLE_CREDENTIALS_JSON')
-        print(f"Environment variable exists: {env_creds is not None}")
         
         if env_creds:
-            print(f"Environment variable length: {len(env_creds)}")
-            print(f"First 50 characters: {env_creds[:50]}")
-            
-            # Clean the JSON string before parsing
             cleaned_creds = clean_json_string(env_creds)
-            print(f"After cleaning length: {len(cleaned_creds)}")
-            
-            try:
-                result = json.loads(cleaned_creds)
-                print("JSON parsing successful")
-                print(f"Keys in credentials: {list(result.keys())}")
-                return result
-            except json.JSONDecodeError as e:
-                print(f"JSON decode error: {e}")
-                print(f"Error at position: {e.pos}")
-                # Show characters around the error position
-                if hasattr(e, 'pos') and e.pos:
-                    start = max(0, e.pos - 20)
-                    end = min(len(cleaned_creds), e.pos + 20)
-                    print(f"Context around error: '{cleaned_creds[start:end]}'")
-                raise Exception(f"환경변수 JSON 파싱 실패: {str(e)}")
+            return json.loads(cleaned_creds)
         
-        # Fallback to file (for development)
-        print("Checking for credentials.json file...")
         if os.path.exists("credentials.json"):
-            print("File exists, reading...")
             with open("credentials.json", 'r', encoding='utf-8') as f:
                 content = f.read()
-                print(f"File content length: {len(content)}")
                 cleaned_content = clean_json_string(content)
-                try:
-                    result = json.loads(cleaned_content)
-                    print("File JSON parsing successful")
-                    return result
-                except json.JSONDecodeError as e:
-                    print(f"File JSON decode error: {e}")
-                    raise Exception(f"파일 JSON 파싱 실패: {str(e)}")
-        else:
-            print("credentials.json file not found")
+                return json.loads(cleaned_content)
         
-        raise Exception("OAuth 설정이 없습니다. GOOGLE_CREDENTIALS_JSON 환경변수를 설정하거나 credentials.json 파일을 추가하세요.")
-    
+        raise Exception("OAuth 설정이 없습니다.")
     except Exception as e:
-        print(f"Exception in get_google_credentials_info: {e}")
-        print(f"Exception type: {type(e)}")
-        import traceback
-        print(f"Full traceback: {traceback.format_exc()}")
-        raise e  # Re-raise the original exception
-    
+        raise e
+
 def get_redirect_uri(request: Request):
     """Get the appropriate redirect URI based on the request"""
     base_url = str(request.base_url).rstrip('/')
@@ -113,34 +69,13 @@ def get_google_client():
     if not user_credentials:
         raise HTTPException(status_code=401, detail="Google 로그인이 필요합니다.")
     
-    try:
-        print(f"User credentials available: {user_credentials is not None}")
-        print(f"Credentials type: {type(user_credentials)}")
-        
-        client = gspread.authorize(user_credentials)
-        print("Google Sheets client created successfully")
-        return client
-    except Exception as e:
-        print(f"Error creating Google client: {e}")
-        print(f"Error type: {type(e)}")
-        raise HTTPException(status_code=500, detail=f"Google 클라이언트 생성 실패: {str(e)}")
+    return gspread.authorize(user_credentials)
 
 # Data models
 class SheetConfig(BaseModel):
     name: str
     url: str
     color: str
-
-class Event(BaseModel):
-    title: str
-    date: str
-    time: str
-    name: str
-    sheet_name: str
-    color: str
-    details: Dict
-
-# Database-backed storage (no more in-memory storage needed)
 
 def extract_sheet_id_and_gid(url: str) -> tuple:
     """Extract sheet ID and GID from Google Sheets URL"""
@@ -158,54 +93,38 @@ def extract_sheet_id_and_gid(url: str) -> tuple:
 def fetch_sheet_data(sheet_id: str, gid: str = "0") -> List[Dict]:
     """Fetch data from Google Sheets using authenticated access"""
     try:
-        print(f"Trying to fetch sheet data for ID: {sheet_id}, GID: {gid}")
+        print(f"Fetching sheet data for ID: {sheet_id}, GID: {gid}")
         client = get_google_client()
         
-        print("Opening spreadsheet by key...")
         spreadsheet = client.open_by_key(sheet_id)
-        print(f"Spreadsheet opened: {spreadsheet.title}")
         
         # Get worksheet by GID
         worksheets = spreadsheet.worksheets()
-        print(f"Found {len(worksheets)} worksheets")
-        
         worksheet = None
         for ws in worksheets:
-            print(f"Worksheet: {ws.title}, ID: {ws.id}")
             if str(ws.id) == gid:
                 worksheet = ws
                 break
         
         if not worksheet:
             worksheet = spreadsheet.sheet1
-            print(f"Using default worksheet: {worksheet.title}")
-        else:
-            print(f"Using worksheet: {worksheet.title}")
         
-        # Try to get all records, if it fails due to duplicate headers, use raw values
-        print("Fetching all records...")
+        # Try to get all records
         try:
             records = worksheet.get_all_records()
             print(f"Got {len(records)} records")
-        except Exception as header_error:
-            print(f"Header error: {header_error}")
-            print("Falling back to raw values due to duplicate headers...")
+        except Exception:
             records = []
         
-        # If no records or header error, get raw values
+        # If no records, get raw values
         if not records:
-            print("Using raw values approach...")
             all_values = worksheet.get_all_values()
-            print(f"Got {len(all_values)} rows of raw data")
-            
             if all_values:
-                # Use column letters as headers (A, B, C, etc.)
                 max_columns = max(len(row) for row in all_values) if all_values else 0
                 headers = [chr(65 + i) if i < 26 else f"Column_{i+1}" for i in range(max_columns)]
-                print(f"Using headers: {headers}")
                 
                 records = []
-                for row_idx, row in enumerate(all_values):
+                for row in all_values:
                     record = {}
                     for i, value in enumerate(row):
                         if i < len(headers):
@@ -213,118 +132,356 @@ def fetch_sheet_data(sheet_id: str, gid: str = "0") -> List[Dict]:
                         else:
                             record[f"Column_{i+1}"] = value
                     records.append(record)
-                print(f"Created {len(records)} records from raw data")
         
         return records
         
     except Exception as e:
-        print(f"Error fetching sheet data: {e}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"시트 데이터 가져오기 실패: {str(e)}")
 
-def get_column_value_by_letter(row_dict: Dict, column_letter: str) -> str:
-    """Get value from row by column letter (A, B, C, etc.)"""
-    if column_letter in row_dict:
-        return str(row_dict[column_letter]).strip()
+def find_column_mappings(data: List[Dict]) -> Dict[str, str]:
+    """데이터에서 동적으로 컬럼 매핑을 찾는 함수"""
+    mappings = {'name': None, 'phone': None, 'date': None, 'procedure': None}
     
-    column_index = ord(column_letter.upper()) - ord('A')
-    keys = list(row_dict.keys())
+    print(f"Analyzing {len(data)} rows for column mappings...")
     
-    if 0 <= column_index < len(keys):
-        key = keys[column_index]
-        return str(row_dict[key]).strip()
+    for row_idx, row in enumerate(data[:15]):
+        if not row:
+            continue
+            
+        for key, value in row.items():
+            if not value:
+                continue
+                
+            value_str = str(value).lower().strip()
+            
+            # 이름 컬럼 찾기
+            if any(keyword in value_str for keyword in ['성함', '이름', '신청자', '고객명', '환자명']):
+                if check_column_has_data(data, key, row_idx + 1):
+                    print(f"Found name column: {key}")
+                    mappings['name'] = key
+            
+            # 전화번호 컬럼 찾기
+            elif any(keyword in value_str for keyword in ['연락처', '전화', '핸드폰', '휴대폰']):
+                if check_column_has_data(data, key, row_idx + 1):
+                    print(f"Found phone column: {key}")
+                    mappings['phone'] = key
+            
+            # 날짜 컬럼 찾기
+            elif any(keyword in value_str for keyword in ['확정일시', '예약확정일시', '수술일', '시술일']):
+                if check_column_has_data(data, key, row_idx + 1):
+                    print(f"Found date column: {key}")
+                    mappings['date'] = key
+            elif not mappings['date'] and any(keyword in value_str for keyword in ['예약일시', '날짜', '일시']):
+                if check_column_has_data(data, key, row_idx + 1):
+                    print(f"Found general date column: {key}")
+                    mappings['date'] = key
+            
+            # 시술 정보 컬럼 찾기
+            elif any(keyword in value_str for keyword in ['시술', '수술', '부위', '진행', '항목']):
+                if check_column_has_data(data, key, row_idx + 1):
+                    print(f"Found procedure column: {key}")
+                    mappings['procedure'] = key
+    
+    # 패턴 기반 이름 찾기
+    if not mappings['name']:
+        print("Trying pattern-based name detection...")
+        for row_idx, row in enumerate(data[:20]):
+            for key, value in row.items():
+                if not value:
+                    continue
+                value_str = str(value).strip()
+                if (len(value_str) >= 2 and len(value_str) <= 4 and 
+                    all('가' <= c <= '힣' for c in value_str)):
+                    name_count = 0
+                    for check_row in data[row_idx:row_idx + 10]:
+                        if key in check_row and check_row[key]:
+                            check_value = str(check_row[key]).strip()
+                            if (len(check_value) >= 2 and len(check_value) <= 4 and 
+                                all('가' <= c <= '힣' for c in check_value)):
+                                name_count += 1
+                    
+                    if name_count >= 3:
+                        print(f"Found name column by pattern: {key}")
+                        mappings['name'] = key
+                        break
+            if mappings['name']:
+                break
+    
+    return mappings
+
+def check_column_has_data(data: List[Dict], column_key: str, start_row: int = 1) -> bool:
+    """해당 컬럼에 실제 데이터가 있는지 확인"""
+    data_count = 0
+    check_limit = min(start_row + 20, len(data))
+    
+    for i in range(start_row, check_limit):
+        if i >= len(data):
+            break
+        row = data[i]
+        if column_key in row and row[column_key]:
+            value = str(row[column_key]).strip()
+            if value and value not in ['', '-', 'N/A']:
+                data_count += 1
+                if data_count >= 3:
+                    return True
+    
+    return data_count >= 1
+
+def extract_hospital_from_data(sheet_name: str, data: List[Dict]) -> str:
+    """시트에서 병원명 추출"""
+    
+    # '개인정보' 바로 위에서 병원는 찾기
+    for row_idx, row in enumerate(data):
+        for key, value in row.items():
+            if value and isinstance(value, str) and '개인정보' in value and row_idx > 0:
+                prev_row = data[row_idx - 1]
+                for prev_key, prev_value in prev_row.items():
+                    if prev_value and isinstance(prev_value, str):
+                        prev_value = str(prev_value).strip()
+                        prev_value_lower = prev_value.lower()
+                        
+                        print(f"Found hospital candidate from 개인정보: '{prev_value}'")
+                        
+                        # 스텔라/뉴브 관련 패턴 검사
+                        if any(pattern in prev_value_lower for pattern in ['스텔라엠투투', '스텔라', '뉴브', '엠투투', 'm2m']):
+                            print(f"Matched Stella/Newb pattern in sheet header: '{prev_value}' -> '뉴브의원'")
+                            return '뉴브의원'
+                        
+                        # 제네오엑스/셀나인 관련 패턴 검사
+                        elif any(pattern in prev_value_lower for pattern in ['제네오엑스', '셀나인']):
+                            print(f"Matched GeneoX/Cellnine pattern in sheet header: '{prev_value}' -> '셀나인청담'")
+                            return '셀나인청담'
+                        
+                        # 일반 병원 키워드
+                        elif (any(keyword in prev_value_lower for keyword in ['병원', '의원', '피부과', '외과']) 
+                              or ('-' in prev_value and len(prev_value) > 5)):
+                            print(f"Found hospital from '개인정보': {prev_value}")
+                            return prev_value
+    
+    # 시트명에서 병원명 추출 (더 상세한 매핑)
+    sheet_name_lower = sheet_name.lower()
+    print(f"Checking sheet name: '{sheet_name}'")
+    
+    patterns = {
+        '라비앙': '라비앙성형외과',
+        '트랜드': '트랜드성형외과', 
+        '황금': '황금피부과',
+        '셀나인': '셀나인청담',
+        '제네오엑스': '뉴브의원',
+        '스텔라': '뉴브의원',
+        '케이블린': '케이블린필러',
+        '쥬브겔': '쥬브겔필러'
+    }
+    
+    for pattern, hospital in patterns.items():
+        if pattern in sheet_name_lower:
+            print(f"Matched sheet name pattern '{pattern}' -> '{hospital}'")
+            return hospital
     
     return ""
 
-def find_phone_number_in_row(row_dict: Dict) -> str:
-    """Find phone number pattern (000-0000-0000 or similar) in any column of the row"""
-    import re
-    phone_pattern = r'\d{2,3}-\d{3,4}-\d{4}'
+def extract_phone_number(text) -> str:
+    """전화번호 추출"""
+    if not text:
+        return ""
     
+    text = str(text)
+    patterns = [r'010-\d{4}-\d{4}', r'\d{3}-\d{3,4}-\d{4}']
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group()
+    
+    return ""
+
+def find_phone_in_row(row_dict: Dict) -> str:
+    """행에서 전화번호 찾기"""
     for key, value in row_dict.items():
-        if value and isinstance(value, str):
-            match = re.search(phone_pattern, value)
-            if match:
-                return match.group()
-    return ""
-
-def find_hospital_info(all_data: List[Dict], current_row_idx: int, name_value: str) -> str:
-    """Find hospital info by looking at rows above the current person's info"""
-    # Look for hospital info in previous rows
-    for i in range(max(0, current_row_idx - 10), current_row_idx):
-        row = all_data[i]
-        for col_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-            value = get_column_value_by_letter(row, col_letter)
-            if value and any(keyword in value for keyword in ['병원', '클리닉', '의원', '센터', '스텔라', '엠투투', '피부과', '외과', '내과', '정형외과', '산부인과', '소아과', '치과', '한의원']):
-                return value
+        if value:
+            phone = extract_phone_number(value)
+            if phone:
+                return phone
     return ""
 
 def parse_date_time(date_str: str) -> tuple:
-    """Parse date string and return date and time"""
-    if not date_str or date_str.strip() == "":
+    """날짜 문자열 파싱"""
+    if not date_str:
         return None, None
     
-    try:
-        date_str = date_str.strip()
+    date_str = str(date_str).strip()
+    
+    formats = [
+        "%y-%m-%d(%a) %H:%M", "%Y-%m-%d(%a) %H:%M",
+        "%y-%m-%d %H:%M", "%Y-%m-%d %H:%M",
+        "%y-%m-%d", "%Y-%m-%d"
+    ]
+    
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            time_part = dt.strftime("%H:%M") if "%H" in fmt else "09:00"
+            return dt.strftime("%Y-%m-%d"), time_part
+        except ValueError:
+            continue
+    
+    # 정규표현식 파싱
+    match = re.search(r'(\d{2,4})[-/.](\d{1,2})[-/.](\d{1,2})(?:\s*(\d{1,2}):(\d{2}))?', date_str)
+    if match:
+        year, month, day, hour, minute = match.groups()
         
-        formats = [
-            "%y-%m-%d(%a) %H:%M",
-            "%Y-%m-%d(%a) %H:%M",
-            "%y-%m-%d %H:%M",
-            "%Y-%m-%d %H:%M",
-            "%m/%d/%Y %H:%M",
-            "%d/%m/%Y %H:%M",
-            "%Y/%m/%d %H:%M",
-            "%d-%m-%Y %H:%M",
-            "%Y.%m.%d %H:%M",
-            "%y.%m.%d %H:%M",
-        ]
+        if len(year) == 2:
+            year = "20" + year if int(year) < 50 else "19" + year
         
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(date_str, fmt)
-                return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
-            except ValueError:
+        try:
+            date_formatted = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            datetime.strptime(date_formatted, "%Y-%m-%d")
+            time_formatted = f"{hour.zfill(2)}:{minute}" if hour and minute else "09:00"
+            return date_formatted, time_formatted
+        except ValueError:
+            pass
+    
+    return None, None
+
+def extract_meaningful_data(row_dict: Dict, column_mappings: Dict[str, str]) -> Dict:
+    """의미있는 데이터 추출"""
+    result = {'name': '', 'phone': '', 'date': '', 'time': '09:00', 'procedure': ''}
+    
+    # 이름 추출
+    if column_mappings['name'] and column_mappings['name'] in row_dict:
+        name_value = row_dict[column_mappings['name']]
+        if name_value:
+            result['name'] = str(name_value).strip()
+    
+    # 전화번호 추출
+    if column_mappings['phone'] and column_mappings['phone'] in row_dict:
+        phone_value = row_dict[column_mappings['phone']]
+        if phone_value:
+            result['phone'] = extract_phone_number(phone_value)
+    
+    if not result['phone']:
+        result['phone'] = find_phone_in_row(row_dict)
+    
+    # 날짜 추출
+    if column_mappings['date'] and column_mappings['date'] in row_dict:
+        date_value = row_dict[column_mappings['date']]
+        if date_value:
+            date_part, time_part = parse_date_time(str(date_value))
+            result['date'] = date_part or ''
+            result['time'] = time_part or '09:00'
+    
+    # 시술 정보
+    if column_mappings['procedure'] and column_mappings['procedure'] in row_dict:
+        proc_value = row_dict[column_mappings['procedure']]
+        if proc_value:
+            result['procedure'] = str(proc_value).strip()
+    
+    return result
+
+def find_hospital_near_name(all_data: List[Dict], current_row_idx: int, name_value: str) -> str:
+    """이름 주변에서 가장 가까운 '개인정보' 바로 위에서 병원 정보 찾기"""
+    print(f"Looking for hospital info near {name_value} at row {current_row_idx}")
+    
+    # 이름이 있는 행에서 위로 50개 행까지 검사
+    start_row = max(0, current_row_idx - 50)
+    
+    # 가장 가까운 '개인정보' 찾기
+    closest_info_row = None
+    closest_distance = float('inf')
+    
+    for i in range(current_row_idx, start_row - 1, -1):
+        if i >= len(all_data):
+            continue
+            
+        row = all_data[i]
+        if not row:
+            continue
+            
+        for key, value in row.items():
+            if value and isinstance(value, str) and '개인정보' in value:
+                distance = current_row_idx - i
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_info_row = i
+                    print(f"Found '개인정보' at row {i}, distance: {distance}")
+                break
+    
+    # 가장 가까운 '개인정보' 바로 위에서 병원 정보 찾기
+    if closest_info_row is not None and closest_info_row > 0:
+        prev_row = all_data[closest_info_row - 1]
+        print(f"Checking row {closest_info_row - 1} above '개인정보'")
+        
+        for prev_key, prev_value in prev_row.items():
+            if prev_value and isinstance(prev_value, str):
+                prev_value = str(prev_value).strip()
+                print(f"Checking hospital value: '{prev_value}'")
+                
+                # 더 정확한 병원명 매핑 (대소문자 구분 없이)
+                prev_value_lower = prev_value.lower()
+                
+                # 스텔라엠투투_뉴브의원 관련 패턴들
+                stella_patterns = ['스텔라엠투투_뉴브의원', '스텔라엠투투', '스텔라', '뉴브의원', '뉴브', '엠투투', 'm2m']
+                
+                for pattern in stella_patterns:
+                    if pattern in prev_value_lower:
+                        print(f"Found Stella/Newb pattern '{pattern}' for {name_value}: '뉴브의원'")
+                        return '뉴브의원'
+                
+                # 제네오엑스_셀나인청담 관련 패턴들
+                geneoex_patterns = ['제네오엑스_셀나인청담', '제네오엑스', '셀나인청담', '셀나인']
+                
+                for pattern in geneoex_patterns:
+                    if pattern in prev_value_lower:
+                        print(f"Found GeneoX/Cellnine pattern '{pattern}' for {name_value}: '셀나인청담'")
+                        return '셀나인청담'
+                
+                # 일반 병원 키워드
+                if any(keyword in prev_value_lower for keyword in ['병원', '의원', '피부과', '외과', '클리닉', '센터']):
+                    print(f"Found general hospital keyword for {name_value}: '{prev_value}'")
+                    return prev_value
+                elif '-' in prev_value and len(prev_value) > 10:
+                    print(f"Found dash-separated hospital info for {name_value}: '{prev_value}'")
+                    return prev_value
+    
+    # 백업: 이름 주변에서 병원 키워드 찾기
+    print(f"Backup search around row {current_row_idx}")
+    for i in range(max(0, current_row_idx - 10), min(current_row_idx + 3, len(all_data))):
+        row = all_data[i]
+        if not row:
+            continue
+            
+        for key, value in row.items():
+            if not value:
                 continue
-        
-        date_match = re.search(r'(\d{2,4})[-/.년](\d{1,2})[-/.월](\d{1,2})[일]?', date_str)
-        time_match = re.search(r'(\d{1,2}):(\d{2})', date_str)
-        
-        if date_match:
-            year, month, day = date_match.groups()
+            value_str = str(value).strip().lower()
             
-            if len(year) == 2:
-                year_int = int(year)
-                if year_int > 50:
-                    year = "19" + year
-                else:
-                    year = "20" + year
-            
-            try:
-                date_formatted = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-                datetime.strptime(date_formatted, "%Y-%m-%d")
-                
-                time_formatted = "00:00"
-                if time_match:
-                    hour, minute = time_match.groups()
-                    time_formatted = f"{hour.zfill(2)}:{minute}"
-                
-                return date_formatted, time_formatted
-            except ValueError:
-                pass
-        
-        return None, None
-        
-    except Exception as e:
-        print(f"Date parsing error for '{date_str}': {e}")
-        return None, None
+            # 더 많은 패턴 검사
+            if any(pattern in value_str for pattern in ['스텔라', '뉴브', '엠투투', 'm2m']):
+                print(f"Found Stella/Newb in backup search: '{value}'")
+                return '뉴브의원'
+            elif any(pattern in value_str for pattern in ['제네오엑스', '셀나인']):
+                print(f"Found GeneoX/Cellnine in backup search: '{value}'")
+                return '셀나인청담'
+            elif (any(keyword in value_str for keyword in ['병원', '의원', '피부과', '외과', '클리닉', '센터']) 
+                  and len(value_str) < 100 and len(value_str) > 5):
+                print(f"Found hospital info in backup search: '{value}'")
+                return str(value).strip()
+    
+    print(f"No hospital info found for {name_value}")
+    return ""
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     global user_credentials
     is_authenticated = user_credentials is not None
+    
+    if is_authenticated:
+        try:
+            print("Auto-refreshing sheets...")
+            await refresh_all_events()
+        except Exception as e:
+            print(f"Auto-refresh error: {e}")
+    
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "is_authenticated": is_authenticated
@@ -332,81 +489,28 @@ async def read_root(request: Request):
 
 @app.get("/auth/login")
 async def login(request: Request):
-    """Start Google OAuth flow"""
     try:
-        print("Starting OAuth login flow...")
         credentials_info = get_google_credentials_info()
-        print("Credentials loaded successfully")
-        
         redirect_uri = get_redirect_uri(request)
-        print(f"Redirect URI: {redirect_uri}")
         
         flow = Flow.from_client_config(
             credentials_info,
             scopes=SCOPES,
             redirect_uri=redirect_uri
         )
-        print("OAuth flow created successfully")
         
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true'
         )
-        print(f"Authorization URL generated: {authorization_url[:100]}...")
         
         return RedirectResponse(authorization_url)
         
     except Exception as e:
-        print(f"Login error: {e}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"로그인 시작 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str = None, state: str = None):
-    """Handle OAuth callback"""
-    global user_credentials
-    
-    print(f"OAuth callback received - Code: {'Yes' if code else 'No'}, State: {state}")
-    
-    if not code:
-        print("No authorization code received")
-        raise HTTPException(status_code=400, detail="인증 코드가 없습니다.")
-    
-    try:
-        print("Loading credentials for callback...")
-        credentials_info = get_google_credentials_info()
-        
-        redirect_uri = get_redirect_uri(request)
-        print(f"Using redirect URI: {redirect_uri}")
-        
-        flow = Flow.from_client_config(
-            credentials_info,
-            scopes=SCOPES,
-            redirect_uri=redirect_uri
-        )
-        print("Flow created for token exchange")
-        
-        print("Fetching token...")
-        flow.fetch_token(code=code)
-        user_credentials = flow.credentials
-        
-        print("Token obtained successfully")
-        print(f"Credentials valid: {user_credentials.valid}")
-        
-        return RedirectResponse("/")
-        
-    except Exception as e:
-        print(f"Callback error: {e}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=400, detail=f"인증 실패: {str(e)}")
-    
-@app.get("/auth/callback")
-async def auth_callback(request: Request, code: str = None, state: str = None):
-    """Handle OAuth callback"""
     global user_credentials
     
     if not code:
@@ -428,26 +532,21 @@ async def auth_callback(request: Request, code: str = None, state: str = None):
         return RedirectResponse("/")
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"인증 실패: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/auth/logout")
 async def logout():
-    """Logout user"""
     global user_credentials
     user_credentials = None
     return RedirectResponse("/")
 
 @app.get("/auth/status")
 async def auth_status():
-    """Check authentication status"""
     global user_credentials
-    return JSONResponse({
-        "authenticated": user_credentials is not None
-    })
+    return JSONResponse({"authenticated": user_credentials is not None})
 
 @app.post("/api/sheets")
 async def add_sheet(sheet_config: SheetConfig):
-    """Add a new sheet configuration"""
     if not user_credentials:
         raise HTTPException(status_code=401, detail="Google 로그인이 필요합니다.")
     
@@ -458,7 +557,6 @@ async def add_sheet(sheet_config: SheetConfig):
         if not test_data:
             raise ValueError("시트에서 데이터를 찾을 수 없습니다.")
         
-        # Add to database
         db_sheet_id = db_add_sheet(
             name=sheet_config.name,
             url=sheet_config.url, 
@@ -468,23 +566,18 @@ async def add_sheet(sheet_config: SheetConfig):
             row_count=len(test_data)
         )
         
-        # Refresh events for this sheet
         await refresh_events_for_sheet(db_sheet_id)
-        
-        new_sheet = {
-            "id": db_sheet_id,
-            "name": sheet_config.name,
-            "url": sheet_config.url,
-            "color": sheet_config.color,
-            "sheet_id": sheet_id,
-            "gid": gid,
-            "created_at": datetime.now().isoformat(),
-            "row_count": len(test_data)
-        }
         
         return JSONResponse({
             "success": True, 
-            "sheet": new_sheet, 
+            "sheet": {
+                "id": db_sheet_id,
+                "name": sheet_config.name,
+                "url": sheet_config.url,
+                "color": sheet_config.color,
+                "created_at": datetime.now().isoformat(),
+                "row_count": len(test_data)
+            }, 
             "message": f"시트가 추가되었습니다. ({len(test_data)}개 행)"
         })
     
@@ -493,13 +586,11 @@ async def add_sheet(sheet_config: SheetConfig):
 
 @app.get("/api/sheets")
 async def get_sheets():
-    """Get all sheet configurations"""
     sheets = db_get_sheets()
     return JSONResponse(sheets)
 
 @app.delete("/api/sheets/{sheet_id}")
 async def delete_sheet(sheet_id: int):
-    """Delete a sheet configuration"""
     success = db_delete_sheet(sheet_id)
     if not success:
         raise HTTPException(status_code=404, detail="시트를 찾을 수 없습니다.")
@@ -507,19 +598,67 @@ async def delete_sheet(sheet_id: int):
 
 @app.get("/api/events")
 async def get_events():
-    """Get all events from all sheets"""
     if not user_credentials:
         return JSONResponse([])
     
-    # Refresh events from all sheets
     await refresh_all_events()
-    
-    # Return events from database
     events = db_get_events()
     return JSONResponse(events)
 
+@app.get("/api/events/monthly/{year}/{month}")
+async def get_monthly_events(year: int, month: int):
+    """특정 월의 이벤트를 마크다운 형식으로 반환"""
+    if not user_credentials:
+        return JSONResponse({"markdown": ""})
+    
+    await refresh_all_events()
+    events = db_get_events()
+    
+    # 해당 월의 이벤트만 필터링
+    monthly_events = []
+    for event in events:
+        try:
+            event_date = datetime.strptime(event['date'], '%Y-%m-%d')
+            if event_date.year == year and event_date.month == month:
+                monthly_events.append(event)
+        except ValueError:
+            continue
+    
+    # 날짜순으로 정렬
+    monthly_events.sort(key=lambda x: x['date'])
+    
+    # 마크다운 형식으로 변환
+    markdown_content = f"# {year}년 {month}월 예약 현황\n\n"
+    
+    if not monthly_events:
+        markdown_content += "해당 월에 예약이 없습니다.\n"
+    else:
+        # 병원별로 그룹핑
+        hospitals = {}
+        for event in monthly_events:
+            hospital = event.get('hospital', '기타')
+            if hospital not in hospitals:
+                hospitals[hospital] = []
+            hospitals[hospital].append(event)
+        
+        for hospital, events in hospitals.items():
+            markdown_content += f"## {hospital}\n\n"
+            markdown_content += "| 날짜 | 시간 | 이름 | 연락처 | 시술내용 |\n"
+            markdown_content += "|------|------|------|---------|----------|\n"
+            
+            for event in events:
+                date = event['date']
+                time = event['time']
+                name = event['name']
+                phone = event.get('phone', '-')
+                procedure = event.get('details', {}).get('procedure', '-') if event.get('details') else '-'
+                markdown_content += f"| {date} | {time} | {name} | {phone} | {procedure} |\n"
+            
+            markdown_content += "\n"
+    
+    return JSONResponse({"markdown": markdown_content})
+
 async def refresh_all_events():
-    """Refresh events for all sheets"""
     if not user_credentials:
         return
     
@@ -528,7 +667,6 @@ async def refresh_all_events():
         await refresh_events_for_sheet(sheet["id"])
 
 async def refresh_events_for_sheet(db_sheet_id: int):
-    """Refresh events for a specific sheet"""
     if not user_credentials:
         return
     
@@ -538,60 +676,72 @@ async def refresh_events_for_sheet(db_sheet_id: int):
         return
         
     try:
-        print(f"Processing sheet: {sheet['name']}")
+        print(f"\n=== Processing sheet: {sheet['name']} ===")
         
-        # Clear existing events for this sheet
         clear_events_for_sheet(db_sheet_id)
-        
-        # Fetch fresh data
         data = fetch_sheet_data(sheet["sheet_id"], sheet["gid"])
+        
+        if not data:
+            print(f"No data found in sheet {sheet['name']}")
+            return
+        
+        print(f"Data rows: {len(data)}")
+        column_mappings = find_column_mappings(data)
+        print(f"Column mappings: {column_mappings}")
+        
+        sheet_hospital = extract_hospital_from_data(sheet['name'], data)
+        print(f"Sheet-level hospital: '{sheet_hospital}'")
+        
+        events_count = 0
         
         for row_idx, row in enumerate(data):
             if not row:
                 continue
             
-            name_value = get_column_value_by_letter(row, 'E')
-            date_value = get_column_value_by_letter(row, 'O')
+            extracted_data = extract_meaningful_data(row, column_mappings)
             
-            if row_idx < 10:
-                print(f"Row {row_idx + 1}: Name='{name_value}', Date='{date_value}'")
-                # Print all column values for first 10 rows to understand structure
-                for col_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']:
-                    col_value = get_column_value_by_letter(row, col_letter)
-                    if col_value:
-                        print(f"  {col_letter}: '{col_value}'")
-            
-            if name_value and date_value and len(name_value) > 0 and len(date_value) > 0:
-                date_part, time_part = parse_date_time(date_value)
+            if extracted_data['name'] and extracted_data['date']:
+                print(f"\n--- Processing {extracted_data['name']} at row {row_idx} ---")
                 
-                if date_part:
-                    # Find phone number pattern in any column
-                    phone_info = find_phone_number_in_row(row)
-                    
-                    # Find hospital info by looking at previous rows
-                    hospital_info = find_hospital_info(data, row_idx, name_value)
-                    
-                    # Add to database
-                    db_add_event(
-                        sheet_id=db_sheet_id,
-                        title=f"{sheet['name']}_{name_value}",
-                        name=name_value,
-                        date=date_part,
-                        time=time_part or "00:00",
-                        sheet_name=sheet["name"],
-                        color=sheet["color"],
-                        hospital=hospital_info,
-                        phone=phone_info,
-                        details=dict(row)
-                    )
+                # 병원명 결정 과정 상세 로깅
+                hospital_from_near = find_hospital_near_name(data, row_idx, extracted_data['name'])
+                print(f"Hospital from near name: '{hospital_from_near}'")
+                
+                hospital_name = (
+                    sheet_hospital or 
+                    hospital_from_near or 
+                    sheet['name']
+                )
+                
+                print(f"Final hospital for {extracted_data['name']}: '{hospital_name}'")
+                
+                db_add_event(
+                    sheet_id=db_sheet_id,
+                    title=f"{hospital_name}_{extracted_data['name']}",
+                    name=extracted_data['name'],
+                    date=extracted_data['date'],
+                    time=extracted_data['time'],
+                    sheet_name=sheet["name"],
+                    color=sheet["color"],
+                    hospital=hospital_name,
+                    phone=extracted_data['phone'],
+                    details={
+                        'procedure': extracted_data['procedure'],
+                        'row_index': row_idx + 1,
+                        'original_data': dict(row)
+                    }
+                )
+                events_count += 1
+                
+                if events_count <= 10:  # 더 많은 예제 보기
+                    print(f"  Event {events_count}: {extracted_data['name']} - {extracted_data['date']} at {hospital_name}")
         
-        # Count events for this sheet
-        events = db_get_events()
-        sheet_events = [e for e in events if e["sheet_name"] == sheet["name"]]
-        print(f"Sheet {sheet['name']} processed: {len(sheet_events)} events found")
+        print(f"\nSheet {sheet['name']} processed: {events_count} events found\n")
                         
     except Exception as e:
         print(f"Error processing sheet {sheet['name']}: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
