@@ -312,24 +312,76 @@ async def read_root(request: Request):
 async def login(request: Request):
     """Start Google OAuth flow"""
     try:
+        print("Starting OAuth login flow...")
         credentials_info = get_google_credentials_info()
+        print("Credentials loaded successfully")
+        
         redirect_uri = get_redirect_uri(request)
+        print(f"Redirect URI: {redirect_uri}")
         
         flow = Flow.from_client_config(
             credentials_info,
             scopes=SCOPES,
             redirect_uri=redirect_uri
         )
+        print("OAuth flow created successfully")
+        
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true'
+        )
+        print(f"Authorization URL generated: {authorization_url[:100]}...")
+        
+        return RedirectResponse(authorization_url)
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true'
-    )
-    
-    return RedirectResponse(authorization_url)
+        print(f"Login error: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"로그인 시작 중 오류: {str(e)}")
 
+@app.get("/auth/callback")
+async def auth_callback(request: Request, code: str = None, state: str = None):
+    """Handle OAuth callback"""
+    global user_credentials
+    
+    print(f"OAuth callback received - Code: {'Yes' if code else 'No'}, State: {state}")
+    
+    if not code:
+        print("No authorization code received")
+        raise HTTPException(status_code=400, detail="인증 코드가 없습니다.")
+    
+    try:
+        print("Loading credentials for callback...")
+        credentials_info = get_google_credentials_info()
+        
+        redirect_uri = get_redirect_uri(request)
+        print(f"Using redirect URI: {redirect_uri}")
+        
+        flow = Flow.from_client_config(
+            credentials_info,
+            scopes=SCOPES,
+            redirect_uri=redirect_uri
+        )
+        print("Flow created for token exchange")
+        
+        print("Fetching token...")
+        flow.fetch_token(code=code)
+        user_credentials = flow.credentials
+        
+        print("Token obtained successfully")
+        print(f"Credentials valid: {user_credentials.valid}")
+        
+        return RedirectResponse("/")
+        
+    except Exception as e:
+        print(f"Callback error: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"인증 실패: {str(e)}")
+    
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str = None, state: str = None):
     """Handle OAuth callback"""
