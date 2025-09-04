@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: sheets-calendar-sync
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app -c gunicorn.conf.py
+    healthCheckPath: /
+    envVars:
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false  # This will be set manually in Render dashboard
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

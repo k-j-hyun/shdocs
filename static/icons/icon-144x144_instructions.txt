@@ -1,0 +1,13 @@
+# Icon Placeholder
+    
+This is a placeholder for 144x144 icon.
+To generate actual PNG files, you can:
+
+1. Open the generated HTML file in a browser
+2. Use browser developer tools to screenshot the icon
+3. Or use a tool like:
+   - cairosvg: pip install cairosvg
+   - Pillow with svg support
+   - Online SVG to PNG converters
+
+HTML file created: static\icons\icon-144x144.html

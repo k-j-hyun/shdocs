@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sheets Calendar Sync</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#FF6B9D">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SheetsCal">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+    
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Sheets Calendar Sync</h1>
+            <p class="subtitle">Google Sheets를 캘린더로 동기화하세요</p>
+            
+            <!-- PWA Install Button -->
+            <div class="install-prompt" id="install-prompt" style="display: none;">
+                <div class="install-banner">
+                    <div class="install-info">
+                        <strong>앱으로 설치</strong>
+                        <span>더 편리하게 사용하세요!</span>
+                    </div>
+                    <button class="btn-install" onclick="installPWA()">설치</button>
+                    <button class="btn-close" onclick="hideInstallPrompt()">&times;</button>
+                </div>
+            </div>
+            
+            <!-- Authentication Status -->
+            <div class="auth-status" id="auth-status">
+                {% if is_authenticated %}
+                <div class="auth-info authenticated">
+                    <span>✅ Google 계정으로 로그인됨</span>
+                    <button class="btn-secondary" onclick="logout()">로그아웃</button>
+                </div>
+                {% else %}
+                <div class="auth-info not-authenticated">
+                    <span>❌ Google 로그인 필요</span>
+                    <button class="btn-primary" onclick="login()">Google 로그인</button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Login Required Message -->
+        <div class="login-required" id="login-required" {% if is_authenticated %}style="display: none;"{% endif %}>
+            <div class="login-message">
+                <h2>Google 로그인이 필요합니다</h2>
+                <p>개인 Google 계정으로 공유받은 시트에 접근하려면 로그인해주세요.</p>
+                <button class="btn-primary large" onclick="login()">Google 계정으로 로그인</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="main-content" {% if not is_authenticated %}style="display: none;"{% endif %}>
+            <!-- Left Panel - Sheet Management -->
+            <div class="left-panel">
+                <div class="panel-section">
+                    <h2>새 시트 추가</h2>
+                    
+                    <div class="form-group">
+                        <label for="sheet-name">시트 제목</label>
+                        <input type="text" id="sheet-name" placeholder="시트 제목을 입력하세요">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sheet-url">Google Sheets URL</label>
+                        <input type="text" id="sheet-url" placeholder="https://docs.google.com/spreadsheets/d/...">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>시트 색상</label>
+                        <div class="color-palette">
+                            <div class="color-option" data-color="#FF6B9D" style="background-color: #FF6B9D"></div>
+                            <div class="color-option" data-color="#4ECDC4" style="background-color: #4ECDC4"></div>
+                            <div class="color-option" data-color="#45B7D1" style="background-color: #45B7D1"></div>
+                            <div class="color-option" data-color="#96CEB4" style="background-color: #96CEB4"></div>
+                            <div class="color-option" data-color="#FFEAA7" style="background-color: #FFEAA7"></div>
+                            <div class="color-option" data-color="#DDA0DD" style="background-color: #DDA0DD"></div>
+                            <div class="color-option" data-color="#98D8C8" style="background-color: #98D8C8"></div>
+                            <div class="color-option" data-color="#F7DC6F" style="background-color: #F7DC6F"></div>
+                            <div class="color-option" data-color="#BB8FCE" style="background-color: #BB8FCE"></div>
+                            <div class="color-option" data-color="#85C1E9" style="background-color: #85C1E9"></div>
+                            <div class="color-option" data-color="#F8C471" style="background-color: #F8C471"></div>
+                            <div class="color-option" data-color="#82E0AA" style="background-color: #82E0AA"></div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn-primary" onclick="addSheet()">시트 추가</button>
+                </div>
+
+                <div class="panel-section">
+                    <h2>등록된 시트</h2>
+                    <div id="sheets-list" class="sheets-list">
+                        <!-- 등록된 시트들이 여기에 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Calendar -->
+            <div class="right-panel">
+                <div class="calendar-header">
+                    <button class="nav-btn" onclick="changeMonth(-1)">‹ 이전</button>
+                    <h2 id="current-month">2025년 9월</h2>
+                    <button class="nav-btn" onclick="changeMonth(1)">다음 ›</button>
+                </div>
+
+                <div class="calendar-loading" id="calendar-loading">
+                    <div class="loading-circle"></div>
+                    <p>시트 데이터를 불러오는 중...</p>
+                </div>
+
+                <div class="calendar" id="calendar">
+                    <div class="calendar-weekdays">
+                        <div class="weekday">일</div>
+                        <div class="weekday">월</div>
+                        <div class="weekday">화</div>
+                        <div class="weekday">수</div>
+                        <div class="weekday">목</div>
+                        <div class="weekday">금</div>
+                        <div class="weekday">토</div>
+                    </div>
+                    <div class="calendar-days" id="calendar-days">
+                        <!-- 캘린더 날짜들이 여기에 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Detail Modal -->
+    <div id="event-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">이벤트 상세정보</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- 이벤트 상세정보가 여기에 표시됩니다 -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+    
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+        
+        // PWA Install functionality
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('beforeinstallprompt fired');
+            e.preventDefault();
+            deferredPrompt = e;
+            showInstallPrompt();
+        });
+        
+        function showInstallPrompt() {
+            const installPrompt = document.getElementById('install-prompt');
+            if (installPrompt) {
+                installPrompt.style.display = 'block';
+            }
+        }
+        
+        function hideInstallPrompt() {
+            const installPrompt = document.getElementById('install-prompt');
+            if (installPrompt) {
+                installPrompt.style.display = 'none';
+            }
+        }
+        
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                        hideInstallPrompt();
+                    } else {
+                        console.log('User dismissed the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+        
+        // Hide install prompt once app is installed
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('PWA was installed');
+            hideInstallPrompt();
+        });
+    </script>
+</body>
+</html>

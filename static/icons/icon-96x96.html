@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { margin: 0; padding: 20px; background: white; }
+        .icon { width: 96px; height: 96px; }
+    </style>
+</head>
+<body>
+    <div class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B9D;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFB6C1;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#bg)" stroke="#fff" stroke-width="8"/>
+  
+  <!-- Calendar icon -->
+  <rect x="128" y="160" width="256" height="192" rx="16" ry="16" fill="#fff" opacity="0.95"/>
+  
+  <!-- Calendar header -->
+  <rect x="128" y="160" width="256" height="48" rx="16" ry="16" fill="#fff"/>
+  <rect x="128" y="192" width="256" height="16" fill="#FF6B9D"/>
+  
+  <!-- Calendar rings -->
+  <rect x="176" y="144" width="8" height="32" rx="4" ry="4" fill="#666"/>
+  <rect x="328" y="144" width="8" height="32" rx="4" ry="4" fill="#666"/>
+  
+  <!-- Calendar grid -->
+  <line x1="160" y1="240" x2="352" y2="240" stroke="#eee" stroke-width="1"/>
+  <line x1="160" y1="272" x2="352" y2="272" stroke="#eee" stroke-width="1"/>
+  <line x1="160" y1="304" x2="352" y2="304" stroke="#eee" stroke-width="1"/>
+  
+  <line x1="192" y1="208" x2="192" y2="336" stroke="#eee" stroke-width="1"/>
+  <line x1="224" y1="208" x2="224" y2="336" stroke="#eee" stroke-width="1"/>
+  <line x1="256" y1="208" x2="256" y2="336" stroke="#eee" stroke-width="1"/>
+  <line x1="288" y1="208" x2="288" y2="336" stroke="#eee" stroke-width="1"/>
+  <line x1="320" y1="208" x2="320" y2="336" stroke="#eee" stroke-width="1"/>
+  
+  <!-- Some calendar events -->
+  <circle cx="176" cy="224" r="4" fill="#FF6B9D"/>
+  <circle cx="240" cy="256" r="4" fill="#4ECDC4"/>
+  <circle cx="304" cy="288" r="4" fill="#45B7D1"/>
+  
+  <!-- Sheets icon overlay -->
+  <rect x="320" y="280" width="48" height="36" rx="4" ry="4" fill="#34A853" opacity="0.9"/>
+  <rect x="324" y="284" width="40" height="4" fill="#fff" opacity="0.8"/>
+  <rect x="324" y="292" width="40" height="4" fill="#fff" opacity="0.8"/>
+  <rect x="324" y="300" width="40" height="4" fill="#fff" opacity="0.8"/>
+  <rect x="324" y="308" width="40" height="4" fill="#fff" opacity="0.8"/>
+</svg></div>
+</body>
+</html>
